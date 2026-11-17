@@ -1,0 +1,64 @@
+[project]
+name = "code-sandbox"
+version = "0.1.0"
+description = "Valxel code-execution sandbox template: runs model-written code for agents in single-use, isolated sandboxes (gVisor, no network, limits), as an MCP tool."
+requires-python = ">=3.12"
+dependencies = [
+  "mcp>=2.3,<3",
+  "httpx>=0.28,<1",
+  "uvicorn[standard]>=0.54,<1",
+  "pydantic>=2.14,<3",
+  "pydantic-settings>=2.16,<3",
+  "openfeature-sdk>=0.10,<1",
+  "openfeature-provider-ofrep>=0.3,<1",
+  "confluent-kafka>=2.16,<3",
+  "opentelemetry-sdk>=1.45,<2",
+  "opentelemetry-exporter-otlp-proto-http>=1.45,<2",
+  "opentelemetry-instrumentation-asgi>=0.66b2",
+  "opentelemetry-instrumentation-httpx>=0.66b2",
+  "opentelemetry-instrumentation-requests>=0.66b2",
+  "pyjwt[crypto]>=2.15.1,<3",
+  "kubernetes>=33.1,<36",
+  "sentry-sdk>=2.72,<3",
+  "prometheus-client>=0.23,<1",
+]
+
+[project.scripts]
+code-sandbox = "sandbox.app:main"
+sandbox-runner = "sandbox.runner:main"
+
+[dependency-groups]
+dev = ["pytest>=9.2", "pytest-cov>=7.1", "ruff>=0.17", "mypy>=2.4"]
+
+[build-system]
+requires = ["hatchling>=1.33.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sandbox"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = [".github"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "BLE", "SIM", "RUF"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106"]
+
+[tool.mypy]
+strict = true
+packages = ["sandbox"]
+mypy_path = "src"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q --cov=sandbox --cov-report=term --cov-report=xml --junitxml=reports/junit.xml"
+
+[tool.coverage.report]
+fail_under = 90
