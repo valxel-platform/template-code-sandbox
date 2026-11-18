@@ -1,0 +1,26 @@
+# The template conformance suite (.github/scripts/conformance.py, managed by the platform): the built
+# image does what every code sandbox repo must. An allowed agent runs a line of Python (the local
+# executor: CI has no cluster to claim sandboxes from).
+image: "ci"  # the tag CI builds
+command: "uv run code-sandbox"  # conformance.py local: the app as a process
+port: 8080
+audience: http://127.0.0.1:8080/mcp
+env:
+  SANDBOX_RESOURCE_URL: http://127.0.0.1:8080/mcp
+  SANDBOX_OIDC_ISSUER: "{issuer}"
+  SANDBOX_OIDC_JWKS_URL: "{jwks}"
+  SANDBOX_ALLOWED_CLIENTS: '["conformance-agent"]'
+  SANDBOX_EXECUTOR: local
+  SANDBOX_FLAGS_URL: "{ofrep}"
+  SANDBOX_PRODUCT: conformance
+  SANDBOX_ENVIRONMENT: ci
+  SANDBOX_AUDIT_SINK: log
+steps:
+  - method: POST
+    path: /mcp
+    token: {scope: "sandbox:run", azp: conformance-agent, client_id: conformance-agent}
+    headers: {accept: "application/json, text/event-stream"}
+    json: {jsonrpc: "2.0", id: 1, method: tools/call, params: {name: run_code, arguments: {code: "print(6 * 7)"}}}
+    contains: ['42']
+# No flag yet: the example code evaluates none (a feature adds its own, flags.enabled).
+checks: [audit, tracing, events]
