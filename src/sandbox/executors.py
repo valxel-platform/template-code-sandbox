@@ -1,8 +1,10 @@
 """Where a job runs.
 
-kubernetes  each run claims a fresh sandbox from the warm pool (Agent Sandbox: a SandboxClaim
-            on the SandboxTemplate `sandbox_template`), sends the job to its runner, reads the
-            result and deletes the claim. A sandbox runs one job, then it's gone: nothing from
+kubernetes  each run claims a fresh sandbox from the warm pool (Agent Sandbox 1.0: a SandboxClaim
+            on the SandboxWarmPool `sandbox_template`, which keeps sandboxes of the platform's
+            SandboxTemplate ready), sends the job to its runner by the sandbox's pod IP, reads
+            the result and deletes the claim; the claim also ends itself shortly after the run's
+            deadline, should this process die first. A sandbox runs one job, then it's gone: nothing from
             one run (files, processes, memory) is ever seen by another. The template, owned by
             the platform, sets the isolation: gVisor, no egress, no service account token,
             read-only root, CPU and memory limits and a deadline.
@@ -16,6 +18,7 @@ import logging
 import time
 import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
 import httpx
@@ -25,7 +28,7 @@ from .runner import execute
 
 log = logging.getLogger("sandbox.executors")
 
-GROUP, VERSION, PLURAL = "extensions.agents.x-k8s.io", "v1alpha1", "sandboxclaims"
+GROUP, VERSION, PLURAL = "extensions.agents.x-k8s.io", "v1beta1", "sandboxclaims"  # Agent Sandbox 1.0
 
 
 class Unavailable(RuntimeError):
@@ -60,19 +63,29 @@ class KubernetesExecutor:
         http: httpx.Client | None = None,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
+        now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self.namespace, self.template, self.port, self.ready_s = namespace, template, port, ready_s
+        self.now = now
         self.api = api or _custom_objects()
         self.http = http or httpx.Client(timeout=60, follow_redirects=False, trust_env=False)
         self.sleep, self.clock = sleep, clock
 
     def run(self, job: Job) -> Result:
         name = f"run-{uuid.uuid4().hex[:16]}"
+        ends = self.now() + timedelta(seconds=job.limits.seconds + 300)
         body = {
             "apiVersion": f"{GROUP}/{VERSION}",
             "kind": "SandboxClaim",
             "metadata": {"name": name, "labels": {"valxel.io/sandbox-run": "true"}},
-            "spec": {"sandboxTemplateRef": {"name": self.template}},
+            "spec": {
+                "warmPoolRef": {"name": self.template},
+                # Gone with its sandbox once deleted, or at this time if nobody deletes it.
+                "lifecycle": {
+                    "shutdownPolicy": "Delete",
+                    "shutdownTime": ends.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                },
+            },
         }
         self.api.create_namespaced_custom_object(GROUP, VERSION, self.namespace, PLURAL, body)
         try:
@@ -99,9 +112,12 @@ class KubernetesExecutor:
             ready = any(
                 c.get("type") == "Ready" and c.get("status") == "True" for c in status.get("conditions") or []
             )
-            sandbox = (status.get("sandbox") or {}).get("Name") or (status.get("sandbox") or {}).get("name")
-            if ready and sandbox:
-                return f"{sandbox}.{self.namespace}.svc.cluster.local"
+            sandbox = status.get("sandbox") or {}
+            # The pod's IP: Agent Sandbox 1.0 reaches a new sandbox by its IP, and its service's
+            # name only once DNS has it.
+            host = next(iter(sandbox.get("podIPs") or []), "") or sandbox.get("serviceFQDN", "")
+            if ready and host:
+                return host
             self.sleep(0.2)
         log.error("sandbox.pool_exhausted template=%s waited_s=%s", self.template, self.ready_s)
         raise Unavailable("no sandbox was ready in time; try again shortly")

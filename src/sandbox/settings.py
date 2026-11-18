@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # production) or "local" (a subprocess with resource limits, for development and tests only).
     executor: str = "local"
     namespace: str = ""  # the Kubernetes namespace the sandbox claims go in (the pod's own if empty)
-    sandbox_template: str = "code-runner"  # the SandboxTemplate / warm pool to claim from
+    sandbox_template: str = "code-runner"  # the SandboxWarmPool to claim from (of the platform's template)
     claim_ready_s: float = 20.0  # how long to wait for a sandbox before giving up
     runner_port: int = 8888
     # Limits for every run; a caller may ask for less time, never more.
