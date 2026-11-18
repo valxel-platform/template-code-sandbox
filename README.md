@@ -34,9 +34,18 @@ SANDBOX_OIDC_ISSUER=https://id.example.com/realms/dev SANDBOX_OIDC_JWKS_URL=... 
 uv run pytest
 ```
 
-Deployed, set `SANDBOX_EXECUTOR=kubernetes` and `SANDBOX_SANDBOX_TEMPLATE` (default `code-runner`).
-The server's service account may only create, read and delete `sandboxclaims` in its namespace.
-The same image runs as `sandbox-runner` in each sandbox.
+Deployed, set `SANDBOX_EXECUTOR=kubernetes`. Runs claim sandboxes from the warm pool
+`SANDBOX_SANDBOX_TEMPLATE` (default `code-runner`) in the server's namespace, through Agent Sandbox
+1.0 (`extensions.agents.x-k8s.io/v1beta1`): a `SandboxClaim` with `warmPoolRef`, reached at the
+sandbox's pod IP, deleted after the run and ending itself shortly after the run's deadline if not.
+
+The platform owns everything a sandbox is: the SDLC tool adds a `code-runner` resource for each
+code-sandbox component, and the platform's `code-runner` type (valxel-platform/platform-resources)
+creates the SandboxTemplate (gVisor, no network, no service account token, read-only root, limits),
+the warm pool, a deny-all network policy, and a Role letting only this component's service account
+create, read and delete `sandboxclaims` there. Each sandbox runs the platform's runner image
+(`ghcr.io/valxel-platform/code-runner`, published from this repo by `runner-image.yml`), not this
+component's image: change the server here, not the runner.
 
 ## After deploy
 

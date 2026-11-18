@@ -1,0 +1,54 @@
+# The platform's code runner: the program each sandbox pod runs (sandbox-runner), published from the
+# template so every product's sandboxes run the same reviewed runner, whatever their own server
+# looks like. The platform's code-runner type (valxel-platform/platform-resources) names a pinned
+# digest of it. Product copies of this template don't publish: the platform owns the runner.
+name: runner-image
+
+on:
+  push:
+    branches: [main]
+    paths: ["src/sandbox/runner.py", "src/sandbox/jobs.py", "Dockerfile", "pyproject.toml", "uv.lock"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: publish
+    if: github.repository == 'valxel-platform/template-code-sandbox'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/valxel-platform/code-runner
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: docker build --pull -t runner .
+      - name: The runner starts
+        run: |
+          docker run -d --name runner -p 8888:8888 --entrypoint sandbox-runner runner
+          for i in $(seq 1 20); do
+            if docker logs runner 2>&1 | grep -qi "listening\|serving" || nc -z 127.0.0.1 8888; then exit 0; fi
+            sleep 1
+          done
+          docker logs runner; exit 1
+      - name: Scan for vulnerabilities with a fix
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock anchore/grype:v0.121.3 \
+            docker:runner --only-fixed --fail-on high
+      - name: Publish
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+          SHA: ${{ github.sha }}
+        run: |
+          echo "$TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          docker tag runner "$IMAGE:sha-$SHA"
+          docker push "$IMAGE:sha-$SHA"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE:sha-$SHA")
+          echo "Published $digest: set the platform's code_runner_image to it." >> "$GITHUB_STEP_SUMMARY"
