@@ -19,7 +19,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
-from . import events, usage
+from . import events, flags, usage
 from .audit import Actor, Auditor, AuditUnavailable, make_sink
 from .executors import Executor, Unavailable, make_executor
 from .jobs import Job, Limits, Refused, check
@@ -49,6 +49,15 @@ class RunResult(BaseModel):
     truncated: bool = Field(description="Output or files were cut at their limits")
     duration_ms: int
     files: list[OutFile]
+    # The template's example feature, behind its flag (example_flag below): off, it stays empty.
+    stdout_lines: int | None = Field(default=None, description="How many lines the code printed")
+
+
+def example_flag(settings: Settings) -> str:
+    """The example feature's flag. It shows the pattern every feature follows: the tool gives the
+    feature a flag in the product's Flipt (on in dev and staging, off in production until it's
+    released) and the new behaviour reads it. Replace it with your first feature's own."""
+    return f"{settings.product or 'example'}.example.stdout-lines"
 
 
 def make_auditor(settings: Settings) -> Auditor:
@@ -146,6 +155,9 @@ def build_server(
             with slots.slot(token.client_id):
                 result = executor.run(job)
             outcome = "success"
+            lines = None
+            if flags.enabled(example_flag(settings), user=token.client_id):  # off: today's behaviour
+                lines = len(result.stdout.splitlines())
             return RunResult(
                 exit_code=result.exit_code,
                 stdout=result.stdout,
@@ -158,6 +170,7 @@ def build_server(
                     OutFile(name=n, content_base64=base64.b64encode(b).decode(), bytes=len(b))
                     for n, b in sorted(result.files.items())
                 ],
+                stdout_lines=lines,
             )
         except Refused as exc:
             outcome, reason = "denied", str(exc)

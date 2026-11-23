@@ -86,3 +86,22 @@ def test_a_sandbox_with_no_allowed_clients_refuses_to_start() -> None:
         build_server(Settings(), verifier=FakeVerifier(), executor=LocalExecutor("dev"))
     with pytest.raises(RuntimeError, match="kubernetes"):
         LocalExecutor("production")
+
+
+def test_the_example_feature_is_behind_its_flag(live: Live) -> None:
+    """The pattern every feature follows: its new behaviour reads its flag, and off is today's."""
+    from openfeature.provider.in_memory_provider import InMemoryFlag, InMemoryProvider
+
+    from sandbox import flags
+    from sandbox.server import example_flag
+    from sandbox.settings import Settings
+
+    assert example_flag(Settings(product="emr")) == "emr.example.stdout-lines"
+    args = {"code": "print(1)\nprint(2)", "timeout_s": 5}
+    assert live.call("agent", "run_code", args).structured_content["stdout_lines"] is None
+    on = InMemoryFlag("on", {"on": True, "off": False})
+    flags.use_provider(InMemoryProvider({"example.example.stdout-lines": on}))
+    try:
+        assert live.call("agent", "run_code", args).structured_content["stdout_lines"] == 2
+    finally:
+        flags.use_provider(InMemoryProvider({}))
