@@ -21,6 +21,6 @@ ENV PATH=/app/.venv/bin:$PATH PYTHONUNBUFFERED=1
 USER 10001
 # One image, two programs: `code-sandbox` (the MCP server, the default) and `sandbox-runner` (what
 # each sandbox pod runs, set by the platform's SandboxTemplate). The runner serves one job on 8888.
-EXPOSE 8080 8888
+EXPOSE 8080 8081 8888
 HEALTHCHECK --interval=30s --timeout=3s CMD python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8080/healthz')"
 CMD ["code-sandbox"]
