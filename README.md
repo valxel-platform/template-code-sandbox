@@ -25,6 +25,13 @@ See [SECURITY.md](SECURITY.md). In short:
 - **Inside:** the runner adds rlimits, an empty environment, a wall-clock kill, and caps on output
   and returned files.
 
+## Ports
+
+The API is on 8080, with `/healthz` and `/readyz` for Kubernetes' probes. `/metrics` is on the
+management port, `MANAGEMENT_PORT` (8081), as Spring's actuator is in the Java templates. The
+platform's metrics collector scrapes it there, and the product's mesh lets the collector reach that
+port and no other. The API port serves no metrics.
+
 ## Running
 
 ```sh
